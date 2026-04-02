@@ -1,0 +1,20 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+/build
+*/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Claude Code
+.claude/
+
+# Signing keys
+*.keystore
+*.jks
+*.p12
+*.pem
+signing.properties
