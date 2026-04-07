@@ -66,9 +66,13 @@ object PeachPlayerTracker {
         ) {
             if (itemID == null) return
 
+            val newPos = (newPosition.positionMs / 1000).toDouble()
+            val oldPos = (oldPosition.positionMs / 1000).toDouble()
+            if (newPos == oldPos) return
+
             updateTimeSpent()
-            props?.playbackPosition = (newPosition.positionMs / 1000).toDouble()
-            props?.previousPlaybackPosition = (oldPosition.positionMs / 1000).toDouble()
+            props?.playbackPosition = newPos
+            props?.previousPlaybackPosition = oldPos
             Event.sendMediaSeek(itemID!!, props, context, metadata)
             props?.previousPlaybackPosition = null
         }

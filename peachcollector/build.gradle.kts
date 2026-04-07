@@ -5,8 +5,8 @@ plugins {
     `maven-publish`
 }
 
-val libraryVersionCode = 1L
-val libraryVersionName = "2.0.0"
+val libraryVersionCode = 2L
+val libraryVersionName = "2.0.1"
 
 android {
     namespace = "ch.ebu.peachcollector"
