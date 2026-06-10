@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ---
 ## [2.0.1] - 2026-04-07
+### Fix
+`session_id` and `session_start_timestamp` are now properly saved on first launch
+It fixes the possible multiple sessions within the inactivity interval
+
+---
+## [2.0.1] - 2026-04-07
 ### Improvement
 Excluded useless media events like `media_seek` from 0s to 0s
 

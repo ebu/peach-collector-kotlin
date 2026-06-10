@@ -282,8 +282,11 @@ class PeachCollector private constructor(private val application: Application) {
             sessionID = sPrefs.getString(
                 PeachConstants.SESSION_ID_SPREF_KEY, UUID.randomUUID().toString()
             ) ?: UUID.randomUUID().toString()
+            // Default to 0 (not currentTimestamp) so the very first launch is treated as
+            // inactive, forcing a reset that persists the session. Matches iOS, where the
+            // baseline (lastRecordedEventTimestamp) defaults to 0.
             val lastActiveTimestamp = sPrefs.getLong(
-                PeachConstants.SESSION_LAST_ACTIVE_TIMESTAMP_SPREF_KEY, currentTimestamp
+                PeachConstants.SESSION_LAST_ACTIVE_TIMESTAMP_SPREF_KEY, 0L
             )
 
             if (currentTimestamp - lastActiveTimestamp > inactivityInterval) {
@@ -338,9 +341,10 @@ class PeachCollector private constructor(private val application: Application) {
     // region Instance Methods
 
     private fun setupSession() {
-        // Generate new session on every init, matching Java behavior
-        sessionStartTimestamp = System.currentTimeMillis()
-        sessionID = UUID.randomUUID().toString()
+        // Load the persisted session and evaluate inactivity, matching iOS: a fresh session
+        // is minted and persisted on first launch, and restored on subsequent launches until
+        // the inactivity interval is exceeded.
+        checkInactivity()
 
         // Clean old events
         scope.launch {
