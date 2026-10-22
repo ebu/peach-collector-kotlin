@@ -249,7 +249,7 @@ PeachPlayerTracker.clearCurrentItem()
 ```
 
 The tracker automatically:
-- Sends `media_play` when playback starts
+- Sends `media_play` once when playback starts or resumes, also when `trackMedia` is called while the player is already playing. Buffering (after a seek for instance) doesn't send it again
 - Sends `media_pause` when paused
 - Sends `media_seek` on position discontinuities
 - Sends `media_end` when playback reaches the end
