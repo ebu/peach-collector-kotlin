@@ -9,7 +9,8 @@ import java.util.Date
  * Tracks Media3 ExoPlayer state and automatically sends playback events.
  * Manages heartbeat timers per publisher for continuous playback tracking.
  *
- * Mirrors the Java PeachPlayerTracker behavior exactly.
+ * Based on the Java PeachPlayerTracker, but like on iOS, media_play is sent once per playback:
+ * playback resuming after buffering (after a seek for instance) doesn't send it again.
  */
 object PeachPlayerTracker {
 
@@ -24,21 +25,35 @@ object PeachPlayerTracker {
 
     private var trackingStartDate: Date? = null
 
+    // True from media_play until playback is paused, ends or stops. Buffering doesn't reset it.
+    private var isPlaybackStarted = false
+
     private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (itemID == null) return
+
+            updateTimeSpent()
+            if (isPlaying) {
+                // Playing, or playing again after buffering
+                startHeartbeats()
+                sendMediaPlayIfNeeded()
+            }
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (itemID == null) return
 
             updateTimeSpent()
-            if (playbackState == Player.STATE_READY && player?.isPlaying == true) {
-                // Playing
-                startHeartbeats()
-                props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
-                Event.sendMediaPlay(itemID!!, props, context, metadata)
-            } else if (playbackState == Player.STATE_ENDED) {
+            if (playbackState == Player.STATE_ENDED) {
                 // Reached the end
                 stopHeartbeats()
+                isPlaybackStarted = false
                 props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
                 Event.sendMediaEnd(itemID!!, props, context, metadata)
+            } else if (playbackState == Player.STATE_IDLE) {
+                // Stopped or failed
+                stopHeartbeats()
+                isPlaybackStarted = false
             }
         }
 
@@ -46,14 +61,10 @@ object PeachPlayerTracker {
             if (itemID == null) return
 
             updateTimeSpent()
-            if (playWhenReady) {
-                // Playing
-                startHeartbeats()
-                props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
-                Event.sendMediaPlay(itemID!!, props, context, metadata)
-            } else {
+            if (!playWhenReady && isPlaybackStarted) {
                 // Paused
                 stopHeartbeats()
+                isPlaybackStarted = false
                 props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
                 Event.sendMediaPause(itemID!!, props, context, metadata)
             }
@@ -127,12 +138,15 @@ object PeachPlayerTracker {
         props?.playbackPosition = if (player != null) (player!!.currentPosition / 1000).toDouble() else 0.0
         if (isNewItem) {
             props?.timeSpent = 0.0
+            isPlaybackStarted = false
         }
 
         player?.let { p ->
             p.addListener(playerListener)
             if (p.isPlaying) {
+                // Already playing, the listener won't be notified
                 startHeartbeats()
+                sendMediaPlayIfNeeded()
             }
         }
     }
@@ -149,6 +163,15 @@ object PeachPlayerTracker {
         context = null
         metadata = null
         trackingStartDate = null
+        isPlaybackStarted = false
+    }
+
+    private fun sendMediaPlayIfNeeded() {
+        if (isPlaybackStarted) return
+
+        isPlaybackStarted = true
+        props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
+        Event.sendMediaPlay(itemID!!, props, context, metadata)
     }
 
     private fun startHeartbeats() {

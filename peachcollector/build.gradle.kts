@@ -5,8 +5,8 @@ plugins {
     `maven-publish`
 }
 
-val libraryVersionCode = 3L
-val libraryVersionName = "2.0.2"
+val libraryVersionCode = 4L
+val libraryVersionName = "2.0.3"
 
 android {
     namespace = "ch.ebu.peachcollector"
@@ -72,6 +72,7 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.media3.exoplayer)
 }
 
 afterEvaluate {
