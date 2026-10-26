@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.0.4] - 2026-10-26
+### Fix
+`PeachPlayerTracker` only sends `media_seek` for seeks within the current item ([#1](https://github.com/ebu/peach-collector-kotlin/issues/1)). It was sent for every position discontinuity reported by Media3, so also when:
+- The playlist was changed (`setMediaItem`, `clearMediaItems`...), for the previous item and usually to 0 s
+- The player moved to another item, automatically or with `seekToNextMediaItem()`
+- Playback looped back to the start in repeat mode, a seek was adjusted, or silence was skipped
+
+`PeachPlayerTracker` only sends `media_end` when playback reaches the end of the item, like on iOS. It was also sent, with `playback_position_s` 0, when the playlist was cleared or the current item removed, as the player ends then too. As on iOS, it isn't sent when the duration of the item is unknown
+
+---
 ## [2.0.3] - 2026-10-22
 ### Fix
 `PeachPlayerTracker` sends `media_play` once per playback, when playback actually starts:

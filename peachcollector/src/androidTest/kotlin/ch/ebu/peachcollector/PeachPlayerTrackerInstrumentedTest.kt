@@ -29,6 +29,7 @@ class PeachPlayerTrackerInstrumentedTest {
     companion object {
         const val PUBLISHER_NAME = "DefaultPublisher"
         const val MEDIA_ID = "media001"
+        const val OTHER_MEDIA_ID = "media002"
         const val MEDIA_DURATION_S = 10
         const val TIMEOUT_MS = 10_000L
         const val SETTLE_MS = 1_000L
@@ -38,6 +39,7 @@ class PeachPlayerTrackerInstrumentedTest {
     private lateinit var context: Context
     private lateinit var publisher: Publisher
     private lateinit var player: ExoPlayer
+    private lateinit var mediaUri: Uri
 
     @Before
     fun initializeModule() {
@@ -54,12 +56,12 @@ class PeachPlayerTrackerInstrumentedTest {
         publisher = Publisher()
         PeachCollector.addPublisher(publisher, PUBLISHER_NAME)
 
-        val mediaFile = createSilentWav(File(context.cacheDir, "silence.wav"), MEDIA_DURATION_S)
+        mediaUri = Uri.fromFile(createSilentWav(File(context.cacheDir, "silence.wav"), MEDIA_DURATION_S))
         onMain {
             player = ExoPlayer.Builder(context).build()
             // Logs the player callbacks to logcat (tag EventLogger) to help understand failures
             player.addAnalyticsListener(EventLogger())
-            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(mediaFile)))
+            player.setMediaItem(MediaItem.fromUri(mediaUri))
             PeachPlayerTracker.setPlayer(player)
         }
     }
@@ -185,6 +187,101 @@ class PeachPlayerTrackerInstrumentedTest {
         )
     }
 
+    @Test
+    fun testReplaceMediaItemWhilePlaying() {
+        startPlaybackAfterReady()
+        // Away from 0 s, as a change from 0 s to 0 s is never sent as a seek
+        waitUntil("playback to pass 1 s") { player.currentPosition >= 1_000 }
+
+        onMain {
+            player.setMediaItem(MediaItem.fromUri(mediaUri))
+            PeachPlayerTracker.trackMedia(OTHER_MEDIA_ID)
+        }
+        waitUntil("the new item to play") { player.isPlaying }
+
+        assertEquals(
+            listOf(EventType.MEDIA_PLAY to MEDIA_ID, EventType.MEDIA_PLAY to OTHER_MEDIA_ID),
+            trackedEventsWithIDs()
+        )
+    }
+
+    @Test
+    fun testSeekToNextMediaItem() {
+        onMain { player.addMediaItem(MediaItem.fromUri(mediaUri)) }
+        startPlaybackAfterReady()
+        // Away from 0 s, as a change from 0 s to 0 s is never sent as a seek
+        waitUntil("playback to pass 1 s") { player.currentPosition >= 1_000 }
+
+        onMain {
+            player.seekToNextMediaItem()
+            PeachPlayerTracker.trackMedia(OTHER_MEDIA_ID)
+        }
+        waitUntil("the next item to play") { player.isPlaying }
+
+        assertEquals(
+            listOf(EventType.MEDIA_PLAY to MEDIA_ID, EventType.MEDIA_PLAY to OTHER_MEDIA_ID),
+            trackedEventsWithIDs()
+        )
+    }
+
+    @Test
+    fun testAutoTransitionToNextItem() {
+        onMain {
+            player.addMediaItem(MediaItem.fromUri(mediaUri))
+            // Tracks the next item when the player moves to it, like an app would
+            player.addListener(object : Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    PeachPlayerTracker.trackMedia(OTHER_MEDIA_ID)
+                }
+            })
+        }
+        startPlaybackAfterReady()
+        onMain { player.seekTo((MEDIA_DURATION_S - 1) * 1000L) }
+        waitUntil("the next item to play") { player.currentMediaItemIndex == 1 && player.isPlaying }
+
+        assertEquals(
+            listOf(
+                EventType.MEDIA_PLAY to MEDIA_ID,
+                EventType.MEDIA_SEEK to MEDIA_ID,
+                EventType.MEDIA_PLAY to OTHER_MEDIA_ID
+            ),
+            trackedEventsWithIDs()
+        )
+    }
+
+    @Test
+    fun testClearMediaItemsWhilePlaying() {
+        startPlaybackAfterReady()
+        // Away from 0 s, as a change from 0 s to 0 s is never sent as a seek
+        waitUntil("playback to pass 1 s") { player.currentPosition >= 1_000 }
+
+        // Clearing the playlist ends the player, but the item didn't reach its end
+        onMain {
+            player.clearMediaItems()
+            player.setMediaItem(MediaItem.fromUri(mediaUri))
+            PeachPlayerTracker.trackMedia(OTHER_MEDIA_ID)
+        }
+        waitUntil("the new item to play") { player.isPlaying }
+
+        assertEquals(
+            listOf(EventType.MEDIA_PLAY to MEDIA_ID, EventType.MEDIA_PLAY to OTHER_MEDIA_ID),
+            trackedEventsWithIDs()
+        )
+    }
+
+    @Test
+    fun testRemoveCurrentItemWhilePlaying() {
+        // The tracked item is the last one of the playlist
+        onMain { player.addMediaItem(0, MediaItem.fromUri(mediaUri)) }
+        startPlaybackAfterReady()
+
+        // With no next item, removing the current one ends the player, but the item didn't reach its end
+        onMain { player.removeMediaItem(player.currentMediaItemIndex) }
+        waitUntil("the player to end") { player.playbackState == Player.STATE_ENDED }
+
+        assertEquals(listOf(EventType.MEDIA_PLAY to MEDIA_ID), trackedEventsWithIDs())
+    }
+
     // region Helpers
 
     /** Starts tracking, then starts playback once the player is ready. */
@@ -224,6 +321,15 @@ class PeachPlayerTrackerInstrumentedTest {
     /** Types of the stored events, without heartbeats. */
     private fun trackedEvents(): List<String> =
         storedEvents().filter { it != EventType.MEDIA_HEARTBEAT }
+
+    /** Types and media IDs of the stored events, without heartbeats. Waits for pending inserts first. */
+    private fun trackedEventsWithIDs(): List<Pair<String, String>> {
+        Thread.sleep(SETTLE_MS)
+        return runBlocking { PeachCollector.shared!!.database.eventDao().getAllEvents() }
+            .sortedBy { it.id }
+            .filter { it.type != EventType.MEDIA_HEARTBEAT }
+            .map { it.type to it.eventID }
+    }
 
     /** Writes a 16-bit mono PCM WAV file containing silence. */
     private fun createSilentWav(file: File, durationSeconds: Int): File {
