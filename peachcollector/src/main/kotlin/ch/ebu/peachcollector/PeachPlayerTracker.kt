@@ -1,5 +1,6 @@
 package ch.ebu.peachcollector
 
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import kotlinx.coroutines.*
@@ -11,6 +12,7 @@ import java.util.Date
  *
  * Based on the Java PeachPlayerTracker, but like on iOS, media_play is sent once per playback:
  * playback resuming after buffering (after a seek for instance) doesn't send it again.
+ * Also like on iOS, media_end is only sent when playback reaches the end of the item.
  */
 object PeachPlayerTracker {
 
@@ -45,11 +47,13 @@ object PeachPlayerTracker {
 
             updateTimeSpent()
             if (playbackState == Player.STATE_ENDED) {
-                // Reached the end
+                // Reached the end, or the playlist was cleared or the current item removed
                 stopHeartbeats()
                 isPlaybackStarted = false
-                props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
-                Event.sendMediaEnd(itemID!!, props, context, metadata)
+                if (hasReachedEnd()) {
+                    props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
+                    Event.sendMediaEnd(itemID!!, props, context, metadata)
+                }
             } else if (playbackState == Player.STATE_IDLE) {
                 // Stopped or failed
                 stopHeartbeats()
@@ -76,6 +80,10 @@ object PeachPlayerTracker {
             @Player.DiscontinuityReason reason: Int
         ) {
             if (itemID == null) return
+            // Seeks within the current item only. Media3 also reports playlist changes, transitions
+            // to another item (seekToNextMediaItem included) and seek adjustments as discontinuities
+            if (reason != Player.DISCONTINUITY_REASON_SEEK) return
+            if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex) return
 
             val newPos = (newPosition.positionMs / 1000).toDouble()
             val oldPos = (oldPosition.positionMs / 1000).toDouble()
@@ -172,6 +180,12 @@ object PeachPlayerTracker {
         isPlaybackStarted = true
         props?.playbackPosition = (player?.currentPosition?.div(1000))?.toDouble()
         Event.sendMediaPlay(itemID!!, props, context, metadata)
+    }
+
+    // Like on iOS, the item duration must be known and the position must have reached it
+    private fun hasReachedEnd(): Boolean {
+        val p = player ?: return false
+        return p.duration != C.TIME_UNSET && p.currentPosition >= p.duration
     }
 
     private fun startHeartbeats() {

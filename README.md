@@ -28,7 +28,7 @@ dependencyResolutionManagement {
 Add the dependency to your module's `build.gradle.kts`:
 ```kotlin
 dependencies {
-    implementation("com.github.ebu:peach-collector-kotlin:2.0.0")
+    implementation("com.github.ebu:peach-collector-kotlin:2.0.4")
 }
 ```
 
@@ -251,8 +251,8 @@ PeachPlayerTracker.clearCurrentItem()
 The tracker automatically:
 - Sends `media_play` once when playback starts or resumes, also when `trackMedia` is called while the player is already playing. Buffering (after a seek for instance) doesn't send it again
 - Sends `media_pause` when paused
-- Sends `media_seek` on position discontinuities
-- Sends `media_end` when playback reaches the end
+- Sends `media_seek` when seeking within the current item, but not when the playlist changes or the player moves to another item (automatically or with `seekToNextMediaItem()`)
+- Sends `media_end` when playback reaches the end of the item, but not when the playlist is cleared or the current item is removed
 - Sends `media_heartbeat` at the configured interval per publisher
 - Updates `playback_position_s`, `time_spent_s`, `playback_rate`, and `volume` on properties
 
